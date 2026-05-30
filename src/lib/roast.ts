@@ -9,7 +9,7 @@ function buildStatBlock(stats: ParticipantStats, label: string): string {
       ? `${stats.mostActiveHour % 12 || 12}pm`
       : `${stats.mostActiveHour}am`;
 
-  return `Stats:
+  return `### ${label}
 - Messages sent: ${stats.totalMessages.toLocaleString()} (${Math.round(stats.messageSharePercent)}% of total chat)
 - Avg message length: ${stats.avgMessageLength.toFixed(1)} words
 - Most active hour: ${hourLabel}
@@ -20,18 +20,17 @@ function buildStatBlock(stats: ParticipantStats, label: string): string {
 - Ghost streak: ${stats.longestGhostStreak} days`;
 }
 
-export async function generateRoast(
-  stats: ParticipantStats,
-  label: string,
+export async function generateBatchedRoasts(
+  batch: { stats: ParticipantStats; label: string }[],
   tone: RoastTone,
   turnstileToken?: string
-): Promise<string> {
-  const statBlock = buildStatBlock(stats, label);
+): Promise<Record<string, string>> {
+  const statBlocks = batch.map((item) => buildStatBlock(item.stats, item.label)).join('\n\n');
 
   const response = await fetch('/api/roast', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ statBlock, tone, turnstileToken }),
+    body: JSON.stringify({ statBlocks, tone, turnstileToken, isBatched: true }),
   });
 
   if (!response.ok) {
@@ -40,7 +39,7 @@ export async function generateRoast(
   }
 
   const data = await response.json();
-  return data.roast;
+  return data.roasts; // Expecting { "Person A": "roast text", ... }
 }
 
 export async function generateAllRoasts(
@@ -48,30 +47,47 @@ export async function generateAllRoasts(
   tone: RoastTone,
   turnstileToken?: string
 ): Promise<RoastResult[]> {
-  const results: RoastResult[] = [];
+  // 1. Sort by activity and limit to top 15 to avoid massive API costs/timeouts
+  // Most groups only care about the top participants anyway
+  const topParticipants = [...participants]
+    .sort((a, b) => b.totalMessages - a.totalMessages)
+    .slice(0, 15);
 
-  for (let i = 0; i < participants.length; i++) {
-    const stats = participants[i];
-    const label = `Person ${String.fromCharCode(65 + i)}`;
+  const results: RoastResult[] = [];
+  const BATCH_SIZE = 5;
+  
+  // 2. Process in batches
+  for (let i = 0; i < topParticipants.length; i += BATCH_SIZE) {
+    const batchData = topParticipants.slice(i, i + BATCH_SIZE).map((p, index) => ({
+      stats: p,
+      label: `Person ${String.fromCharCode(65 + i + index)}`,
+    }));
 
     try {
-      const roast = await generateRoast(stats, label, tone, turnstileToken);
-      results.push({
-        participantLabel: label,
-        realName: stats.name,
-        roast,
-        tone,
+      const batchedRoasts = await generateBatchedRoasts(batchData, tone, turnstileToken);
+      
+      batchData.forEach((item) => {
+        results.push({
+          participantLabel: item.label,
+          realName: item.stats.name,
+          roast: batchedRoasts[item.label] || `AI was speechless about ${item.stats.name}.`,
+          tone,
+        });
       });
     } catch (error) {
-      console.error(`Failed to generate roast for ${stats.name}:`, error);
-      results.push({
-        participantLabel: label,
-        realName: stats.name,
-        roast: `Couldn't roast ${stats.name} right now. The AI is probably too intimidated. 😅`,
-        tone,
+      console.error(`Failed to generate roast batch starting at ${i}:`, error);
+      // Fallback for failed batch
+      batchData.forEach((item) => {
+        results.push({
+          participantLabel: item.label,
+          realName: item.stats.name,
+          roast: `Couldn't roast ${item.stats.name} right now. The AI is probably too intimidated. 😅`,
+          tone,
+        });
       });
     }
   }
 
+  // Preserve the original order (by activity) which is what results already has
   return results;
 }

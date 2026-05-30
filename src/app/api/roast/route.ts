@@ -33,11 +33,21 @@ function getClientIp(request: NextRequest): string {
 }
 
 export async function POST(request: NextRequest) {
+  // Parse request body once at the top
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON request body' }, { status: 400 });
+  }
+
+  const { statBlock, statBlocks, tone, isBatched, turnstileToken } = body;
+
   // --- Rate limiting ---
   const ip = getClientIp(request);
   const rateLimit = checkRateLimitServerless(ip, {
     windowMs: 60 * 1000, // 1 minute window
-    maxRequests: 10,      // 10 roasts per minute per IP
+    maxRequests: 5,      // Reduced to 5/min as batched calls are heavier
   });
 
   if (!rateLimit.allowed) {
@@ -59,8 +69,6 @@ export async function POST(request: NextRequest) {
   // --- Turnstile verification ---
   const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
   if (turnstileSecret) {
-    const { turnstileToken } = await request.json().catch(() => ({}));
-
     if (!turnstileToken) {
       return NextResponse.json(
         { error: 'Bot verification required. Please complete the CAPTCHA.' },
@@ -98,17 +106,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
-    const { statBlock, tone } = body;
-
-    if (!statBlock || !tone) {
+    if ((!statBlock && !statBlocks) || !tone) {
       return NextResponse.json(
-        { error: 'Missing statBlock or tone in request.' },
+        { error: 'Missing statBlock(s) or tone in request.' },
         { status: 400 }
       );
     }
 
-    const systemPrompt = ROAST_PROMPTS[tone];
+    let systemPrompt = ROAST_PROMPTS[tone];
     if (!systemPrompt) {
       return NextResponse.json(
         { error: `Unknown tone: ${tone}` },
@@ -116,8 +121,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const model =
-      process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat:free';
+    if (isBatched) {
+      systemPrompt += `\n\nCRITICAL: You are roasting MULTIPLE people. Return your response ONLY as a JSON object where the keys are the person labels (e.g., "Person A", "Person B") and values are the roast strings. Example: { "Person A": "roast text", "Person B": "roast text" }. Do not include any other text.`;
+    }
+
+    // const model =  process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-exp:free';
+
+    const model = 'deepseek/deepseek-v4-flash:free';
 
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -131,10 +141,13 @@ export async function POST(request: NextRequest) {
         model,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: statBlock },
+          { role: 'user', content: isBatched ? statBlocks : statBlock },
         ],
-        max_tokens: 300,
+        max_tokens: isBatched ? 1000 : 300,
         temperature: 0.9,
+        // Removed response_format: { type: 'json_object' } because some free models
+        // on OpenRouter fail with "Provider returned error" when this is enabled.
+        // We rely on the system prompt instead.
       }),
     });
 
@@ -143,7 +156,7 @@ export async function POST(request: NextRequest) {
       let errorData;
       try {
         errorData = JSON.parse(errorText);
-      } catch (e) {
+      } catch {
         errorData = { error: { message: errorText } };
       }
       
@@ -158,17 +171,32 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    const roast = data.choices?.[0]?.message?.content?.trim();
+    const content = data.choices?.[0]?.message?.content?.trim();
 
-    if (!roast) {
+    if (!content) {
       return NextResponse.json(
-        { error: 'No roast generated — empty response from model.' },
+        { error: 'No content generated — empty response from model.' },
         { status: 500 }
       );
     }
 
+    if (isBatched) {
+      try {
+        // Find JSON in content in case the model added markdown blocks
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        const roasts = JSON.parse(jsonMatch ? jsonMatch[0] : content);
+        return NextResponse.json({ roasts });
+      } catch {
+        console.error('Failed to parse batched JSON:', content);
+        return NextResponse.json(
+          { error: 'AI returned invalid formatting for batched roasts.' },
+          { status: 500 }
+        );
+      }
+    }
+
     return NextResponse.json(
-      { roast },
+      { roast: content },
       {
         headers: {
           'X-RateLimit-Remaining': String(rateLimit.remaining),
