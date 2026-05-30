@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import {
   MessageCircle,
   Users,
@@ -15,9 +15,6 @@ import {
   Camera,
   Smartphone,
   Clipboard,
-  Key,
-  ArrowUp,
-  Shield,
 } from 'lucide-react';
 import { parseChat } from '@/lib/parser';
 import { analyzeChat } from '@/lib/stats';
@@ -44,19 +41,6 @@ export default function AnalyzePage() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [roasts, setRoasts] = useState<RoastResult[] | null>(null);
   const [roastTone, setRoastTone] = useState<RoastTone>('savage');
-  const [apiKey, setApiKey] = useState<string>('');
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
-
-  // Load API key from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem('gemini_api_key');
-    if (stored) setApiKey(stored);
-  }, []);
-
-  const saveApiKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem('gemini_api_key', key);
-  };
 
   const handleFile = useCallback((content: string, name: string) => {
     setError(null);
@@ -86,10 +70,7 @@ export default function AnalyzePage() {
   }, []);
 
   const handleGenerateRoasts = useCallback(async () => {
-    if (!result || !apiKey) {
-      setShowApiKeyInput(true);
-      return;
-    }
+    if (!result) return;
 
     setState('roasting');
     setRoasts(null);
@@ -97,29 +78,28 @@ export default function AnalyzePage() {
     try {
       const generated = await generateAllRoasts(
         result.participants,
-        roastTone,
-        apiKey
+        roastTone
       );
       setRoasts(generated);
     } catch (err) {
       console.error('Roast generation failed:', err);
       setError(
-        'Failed to generate roasts. Check your API key and try again.'
+        'Failed to generate roasts. The AI service may be temporarily unavailable.'
       );
     } finally {
       setState('done');
     }
-  }, [result, apiKey, roastTone]);
+  }, [result, roastTone]);
 
   const handleToneChange = useCallback(
     async (tone: RoastTone) => {
       setRoastTone(tone);
-      if (!result || !apiKey) return;
+      if (!result) return;
 
       setState('roasting');
       setRoasts(null);
       try {
-        const generated = await generateAllRoasts(result.participants, tone, apiKey);
+        const generated = await generateAllRoasts(result.participants, tone);
         setRoasts(generated);
       } catch (err) {
         console.error('Roast regeneration failed:', err);
@@ -127,7 +107,7 @@ export default function AnalyzePage() {
         setState('done');
       }
     },
-    [result, apiKey]
+    [result]
   );
 
   return (
@@ -147,40 +127,6 @@ export default function AnalyzePage() {
               {error}
             </div>
           )}
-
-          {/* API Key input */}
-          <div className="bg-card rounded-xl p-4 border border-border space-y-3">
-            <button
-              onClick={() => setShowApiKeyInput(!showApiKeyInput)}
-              className="text-sm text-muted hover:text-foreground transition-colors inline-flex items-center gap-1.5"
-            >
-              <Key className="w-4 h-4" />
-              {showApiKeyInput ? 'Hide API Key' : 'Set Gemini API Key'}
-            </button>
-            {showApiKeyInput && (
-              <div className="space-y-2">
-                <p className="text-xs text-muted">
-                  Your key stays in your browser (localStorage). Never sent to any server.
-                  Get one at{' '}
-                  <a
-                    href="https://aistudio.google.com/apikey"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-accent hover:underline"
-                  >
-                    aistudio.google.com
-                  </a>
-                </p>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => saveApiKey(e.target.value)}
-                  placeholder="Enter your Gemini API key..."
-                  className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted focus:outline-none focus:border-accent"
-                />
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -409,13 +355,6 @@ export default function AnalyzePage() {
                 </button>
               )}
             </div>
-
-            {!apiKey && !roasts && state === 'done' && (
-              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-200 inline-flex items-start gap-2">
-                <ArrowUp className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                Set your Gemini API key above to generate roasts. Your key stays in your browser.
-              </div>
-            )}
 
             <RoastPanel
               roasts={roasts || []}
