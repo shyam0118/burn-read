@@ -15,6 +15,18 @@ export default function WordCloud({
     return [...words].sort((a, b) => b.count - a.count).slice(0, 20);
   }, [words]);
 
+  // Shuffle for a more "cloud-like" feel
+  const shuffledWords = useMemo(() => {
+    // We use a simple pseudo-random sort that's stable for the same input
+    // To satisfy "purity" we avoid naked Math.random() if the linter is strict,
+    // but here we just want a non-linear visual.
+    return [...sortedWords].sort((a, b) => {
+      const hashA = a.word.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      const hashB = b.word.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      return (hashA % 7) - (hashB % 7);
+    });
+  }, [sortedWords]);
+
   const maxCount = sortedWords[0]?.count ?? 1;
   const minCount = sortedWords[sortedWords.length - 1]?.count ?? 1;
 
@@ -38,11 +50,6 @@ export default function WordCloud({
       </div>
     );
   }
-
-  // Shuffle for a more "cloud-like" feel
-  const shuffledWords = useMemo(() => {
-    return [...sortedWords].sort(() => Math.random() - 0.5);
-  }, [sortedWords]);
 
   return (
     <div className="bg-card/50 rounded-xl p-4 border border-border">
