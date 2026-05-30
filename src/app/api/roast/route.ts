@@ -1,10 +1,14 @@
 // OpenRouter API proxy — calls OpenRouter from the server so the API key stays private
 // Only anonymized stats are sent, never actual chat messages
+// Protected by rate limiting and Cloudflare Turnstile verification
 
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimitServerless } from '@/lib/rate-limit';
 
 const OPENROUTER_URL =
   process.env.OPENROUTER_URL || 'https://openrouter.ai/api/v1/chat/completions';
+
+const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
 const ROAST_PROMPTS: Record<string, string> = {
   savage: `You are a savage but friendly roast comedian. Roast this WhatsApp user based ONLY on their chat statistics. Be brutally honest, sharp, and funny. Use the numbers to make jokes. Keep it under 4 sentences. Do not be mean or offensive — it should feel like a friend roasting a friend. Address the person directly as "you".`,
@@ -18,9 +22,74 @@ const ROAST_PROMPTS: Record<string, string> = {
   corporate: `You are giving an employee performance review. Roast this WhatsApp user based ONLY on their chat statistics formatted like a corporate performance review. Use terms like "KPIs", "deliverables", "quarterly results", "needs improvement", "areas of concern", "let's circle back". Keep it under 4 sentences. Make it funny for anyone who has worked in a corporate. Address the person directly as "you".`,
 };
 
-export async function POST(request: NextRequest) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+function getClientIp(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  const realIp = request.headers.get('x-real-ip');
+  if (realIp) return realIp;
+  return '127.0.0.1';
+}
 
+export async function POST(request: NextRequest) {
+  // --- Rate limiting ---
+  const ip = getClientIp(request);
+  const rateLimit = checkRateLimitServerless(ip, {
+    windowMs: 60 * 1000, // 1 minute window
+    maxRequests: 10,      // 10 roasts per minute per IP
+  });
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      {
+        error: 'Too many requests. Please wait a moment before trying again.',
+        retryAfter: Math.ceil((rateLimit.resetAt - Date.now()) / 1000),
+      },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(Math.ceil((rateLimit.resetAt - Date.now()) / 1000)),
+          'X-RateLimit-Remaining': '0',
+        },
+      }
+    );
+  }
+
+  // --- Turnstile verification ---
+  const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
+  if (turnstileSecret) {
+    const { turnstileToken } = await request.json().catch(() => ({}));
+
+    if (!turnstileToken) {
+      return NextResponse.json(
+        { error: 'Bot verification required. Please complete the CAPTCHA.' },
+        { status: 400 }
+      );
+    }
+
+    const verifyForm = new FormData();
+    verifyForm.append('secret', turnstileSecret);
+    verifyForm.append('response', turnstileToken);
+    verifyForm.append('remoteip', ip);
+
+    const verifyResp = await fetch(TURNSTILE_VERIFY_URL, {
+      method: 'POST',
+      body: verifyForm,
+    });
+
+    const verifyData = await verifyResp.json();
+
+    if (!verifyData.success) {
+      return NextResponse.json(
+        { error: 'Bot verification failed. Please try again.' },
+        { status: 400 }
+      );
+    }
+  }
+
+  // --- API key check ---
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
       { error: 'OpenRouter API key is not configured on the server.' },
@@ -88,7 +157,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ roast });
+    return NextResponse.json(
+      { roast },
+      {
+        headers: {
+          'X-RateLimit-Remaining': String(rateLimit.remaining),
+        },
+      }
+    );
   } catch (error) {
     console.error('Roast API error:', error);
     return NextResponse.json(

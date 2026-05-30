@@ -23,14 +23,15 @@ function buildStatBlock(stats: ParticipantStats, label: string): string {
 export async function generateRoast(
   stats: ParticipantStats,
   label: string,
-  tone: RoastTone
+  tone: RoastTone,
+  turnstileToken?: string
 ): Promise<string> {
   const statBlock = buildStatBlock(stats, label);
 
   const response = await fetch('/api/roast', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ statBlock, tone }),
+    body: JSON.stringify({ statBlock, tone, turnstileToken }),
   });
 
   if (!response.ok) {
@@ -44,7 +45,8 @@ export async function generateRoast(
 
 export async function generateAllRoasts(
   participants: ParticipantStats[],
-  tone: RoastTone
+  tone: RoastTone,
+  turnstileToken?: string
 ): Promise<RoastResult[]> {
   const results: RoastResult[] = [];
 
@@ -53,7 +55,7 @@ export async function generateAllRoasts(
     const label = `Person ${String.fromCharCode(65 + i)}`;
 
     try {
-      const roast = await generateRoast(stats, label, tone);
+      const roast = await generateRoast(stats, label, tone, turnstileToken);
       results.push({
         participantLabel: label,
         realName: stats.name,

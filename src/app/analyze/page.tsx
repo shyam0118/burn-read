@@ -30,9 +30,12 @@ import HeatmapChart from '@/components/HeatmapChart';
 import PieChart from '@/components/PieChart';
 import WordCloud from '@/components/WordCloud';
 import { RoastPanel } from '@/components/RoastCard';
+import TurnstileWidget from '@/components/TurnstileWidget';
 import Link from 'next/link';
 
-type AppState = 'idle' | 'parsing' | 'done' | 'roasting';
+type AppState = 'idle' | 'parsing' | 'done' | 'roasting' | 'verify';
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '';
 
 export default function AnalyzePage() {
   const [state, setState] = useState<AppState>('idle');
@@ -41,6 +44,7 @@ export default function AnalyzePage() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [roasts, setRoasts] = useState<RoastResult[] | null>(null);
   const [roastTone, setRoastTone] = useState<RoastTone>('savage');
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   const handleFile = useCallback((content: string, name: string) => {
     setError(null);
@@ -69,27 +73,54 @@ export default function AnalyzePage() {
     }, 100);
   }, []);
 
+  const executeRoasts = useCallback(
+    async (token: string | null) => {
+      if (!result) return;
+
+      setState('roasting');
+      setRoasts(null);
+
+      try {
+        const generated = await generateAllRoasts(
+          result.participants,
+          roastTone,
+          token || undefined
+        );
+        setRoasts(generated);
+      } catch (err) {
+        console.error('Roast generation failed:', err);
+        setError(
+          'Failed to generate roasts. The AI service may be temporarily unavailable.'
+        );
+      } finally {
+        setState('done');
+        setTurnstileToken(null);
+      }
+    },
+    [result, roastTone]
+  );
+
   const handleGenerateRoasts = useCallback(async () => {
     if (!result) return;
 
-    setState('roasting');
-    setRoasts(null);
-
-    try {
-      const generated = await generateAllRoasts(
-        result.participants,
-        roastTone
-      );
-      setRoasts(generated);
-    } catch (err) {
-      console.error('Roast generation failed:', err);
-      setError(
-        'Failed to generate roasts. The AI service may be temporarily unavailable.'
-      );
-    } finally {
-      setState('done');
+    // If Turnstile is configured, show verification widget first
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      setState('verify');
+      return;
     }
-  }, [result, roastTone]);
+
+    await executeRoasts(turnstileToken);
+  }, [result, turnstileToken, executeRoasts]);
+
+  const handleTurnstileVerify = useCallback(
+    (token: string) => {
+      setTurnstileToken(token);
+      setState('done');
+      // Proceed with roast generation now that we have the token
+      executeRoasts(token);
+    },
+    [executeRoasts]
+  );
 
   const handleToneChange = useCallback(
     async (tone: RoastTone) => {
@@ -99,7 +130,11 @@ export default function AnalyzePage() {
       setState('roasting');
       setRoasts(null);
       try {
-        const generated = await generateAllRoasts(result.participants, tone);
+        const generated = await generateAllRoasts(
+          result.participants,
+          tone,
+          turnstileToken || undefined
+        );
         setRoasts(generated);
       } catch (err) {
         console.error('Roast regeneration failed:', err);
@@ -107,7 +142,7 @@ export default function AnalyzePage() {
         setState('done');
       }
     },
-    [result]
+    [result, turnstileToken]
   );
 
   return (
@@ -346,7 +381,7 @@ export default function AnalyzePage() {
                 <Flame className="w-5 h-5 text-accent" />
                 AI Roast
               </h2>
-              {!roasts && state !== 'roasting' && (
+              {!roasts && state !== 'roasting' && state !== 'verify' && (
                 <button
                   onClick={handleGenerateRoasts}
                   className="px-5 py-2.5 rounded-xl bg-accent text-slate-900 font-semibold text-sm hover:bg-accent/90 transition-colors"
@@ -355,6 +390,25 @@ export default function AnalyzePage() {
                 </button>
               )}
             </div>
+
+            {/* Turnstile verification */}
+            {state === 'verify' && (
+              <div className="bg-card rounded-xl p-6 border border-border space-y-3 text-center">
+                <p className="text-sm text-muted">
+                  Verify you&apos;re human to generate roasts
+                </p>
+                <div className="flex justify-center">
+                  <TurnstileWidget
+                    siteKey={TURNSTILE_SITE_KEY}
+                    onVerify={handleTurnstileVerify}
+                    onError={() => {
+                      setError('Bot verification failed. Please refresh and try again.');
+                      setState('done');
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             <RoastPanel
               roasts={roasts || []}
