@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     }
 
     const model =
-      process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat-v3-0324:free';
+      process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat:free';
 
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -133,16 +133,26 @@ export async function POST(request: NextRequest) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: statBlock },
         ],
-        max_tokens: 200,
+        max_tokens: 300,
         temperature: 0.9,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenRouter API error:', response.status, errorText);
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch (e) {
+        errorData = { error: { message: errorText } };
+      }
+      
+      console.error('OpenRouter API error:', response.status, errorData);
+      
+      const errorMessage = errorData.error?.message || errorData.message || `OpenRouter API returned ${response.status}`;
+      
       return NextResponse.json(
-        { error: `OpenRouter API returned ${response.status}` },
+        { error: errorMessage },
         { status: 502 }
       );
     }
