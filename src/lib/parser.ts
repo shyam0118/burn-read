@@ -6,18 +6,21 @@ import { ParsedMessage } from '@/types/chat';
 
 // Match WhatsApp message lines in various date formats
 // Format 1: "27/05/2026, 10:30 - Sender Name: message"
-// Format 2: "5/27/26, 10:30 AM - Sender Name: message"
-// Format 3: "2026-05-27, 10:30 - Sender Name: message"
-// Format 4: "[27/05/2026, 10:30:00] Sender Name: message" (iOS)
-// Format 5: "27/05/2026, 10:30 AM - Sender Name: message"
+// Format 2: "27/05/2026, 10:30 AM - Sender Name: message"
+// Format 3: "5/27/26, 10:30 AM - Sender Name: message" (US, AM/PM)
+// Format 4: "5/27/26, 10:30 - Sender Name: message" (US, 24-hour)
+// Format 5: "2026-05-27, 10:30 - Sender Name: message"
+// Format 6: "[27/05/2026, 10:30:00] Sender Name: message" (iOS)
 
 const MESSAGE_PATTERNS = [
-  // DD/MM/YYYY, HH:MM - Sender: message (most common)
-  /^(\d{1,2}\/\d{1,2}\/\d{4}),\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*-\s*(.+?):\s*(.+)/,
   // DD/MM/YYYY, HH:MM AM/PM - Sender: message
   /^(\d{1,2}\/\d{1,2}\/\d{4}),\s*(\d{1,2}:\d{2}(?::\d{2})?\s*[APap][Mm])\s*-\s*(.+?):\s*(.+)/,
-  // M/D/YY, HH:MM AM/PM - Sender: message (US format)
-  /^(\d{1,2}\/\d{1,2}\/\d{2,4}),\s*(\d{1,2}:\d{2}(?::\d{2})?\s*[APap][Mm])\s*-\s*(.+?):\s*(.+)/,
+  // DD/MM/YYYY, HH:MM - Sender: message (most common, 24-hour)
+  /^(\d{1,2}\/\d{1,2}\/\d{4}),\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*-\s*(.+?):\s*(.+)/,
+  // M/D/YY or D/M/YY, HH:MM AM/PM - Sender: message
+  /^(\d{1,2}\/\d{1,2}\/\d{2}),\s*(\d{1,2}:\d{2}(?::\d{2})?\s*[APap][Mm])\s*-\s*(.+?):\s*(.+)/,
+  // M/D/YY or D/M/YY, HH:MM - Sender: message (24-hour, no AM/PM)
+  /^(\d{1,2}\/\d{1,2}\/\d{2}),\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*-\s*(.+?):\s*(.+)/,
   // YYYY-MM-DD, HH:MM - Sender: message (ISO)
   /^(\d{4}-\d{1,2}-\d{1,2}),\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*-\s*(.+?):\s*(.+)/,
   // [DD/MM/YYYY, HH:MM:SS] Sender: message (iOS bracket format)
@@ -88,16 +91,32 @@ function parseDate(dateStr: string, timeStr: string): Date | null {
     month = parseInt(parts[1], 10) - 1;
     day = parseInt(parts[2], 10);
   } else if (parts[2].length === 4) {
-    // DD/MM/YYYY
+    // DD/MM/YYYY (4-digit year is unambiguous)
     day = parseInt(parts[0], 10);
     month = parseInt(parts[1], 10) - 1;
     year = parseInt(parts[2], 10);
   } else {
-    // M/D/YY or D/M/YY — try DD/MM/YY first (more common globally)
-    day = parseInt(parts[0], 10);
-    month = parseInt(parts[1], 10) - 1;
+    // 2-digit year — could be M/D/YY or D/M/YY
+    // Use a heuristic: if either part is > 12, it must be the day
+    const first = parseInt(parts[0], 10);
+    const second = parseInt(parts[1], 10);
     year = parseInt(parts[2], 10);
     if (year < 100) year += 2000;
+
+    if (second > 12) {
+      // Second part > 12 means it must be the day → M/D/YY
+      month = first - 1;
+      day = second;
+    } else if (first > 12) {
+      // First part > 12 means it must be the day → D/M/YY
+      day = first;
+      month = second - 1;
+    } else {
+      // Both <= 12, ambiguous. Default to M/D/YY (2-digit year exports
+      // are almost always from US-locale phones).
+      month = first - 1;
+      day = second;
+    }
   }
 
   const [hours, minutes, seconds] = cleanTime.split(':').map(Number);

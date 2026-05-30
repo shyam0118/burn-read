@@ -1,99 +1,67 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import * as d3 from 'd3';
+import { useMemo } from 'react';
 
 interface WordCloudProps {
   words: { word: string; count: number }[];
   label: string;
-  width?: number;
-  height?: number;
 }
 
 export default function WordCloud({
   words,
   label,
-  width = 500,
-  height = 300,
 }: WordCloudProps) {
-  const svgRef = useRef<SVGSVGElement>(null);
+  const sortedWords = useMemo(() => {
+    return [...words].sort((a, b) => b.count - a.count).slice(0, 20);
+  }, [words]);
 
-  useEffect(() => {
-    if (!svgRef.current || words.length === 0) return;
+  const maxCount = sortedWords[0]?.count ?? 1;
+  const minCount = sortedWords[sortedWords.length - 1]?.count ?? 1;
 
-    const svg = d3.select(svgRef.current);
-    svg.selectAll('*').remove();
+  const getFontSize = (count: number) => {
+    if (maxCount === minCount) return '1rem';
+    // Normalize count to a 0.75rem to 2rem range
+    const size = 0.75 + ((count - minCount) / (maxCount - minCount)) * 1.25;
+    return `${size}rem`;
+  };
 
-    const maxCount = words[0]?.count ?? 1;
-    const minCount = words[words.length - 1]?.count ?? 1;
-    const fontSize = d3
-      .scaleLinear()
-      .domain([minCount, maxCount])
-      .range([12, 48])
-      .clamp(true);
-
-    const color = d3
-      .scaleLinear<string>()
-      .domain([minCount, maxCount])
-      .range(['#38bdf844', '#38bdf8'])
-      .clamp(true);
-
-    const group = svg
-      .append('g')
-      .attr('transform', `translate(${width / 2}, ${height / 2})`);
-
-    const shuffled = [...words].sort(() => Math.random() - 0.5);
-
-    const nodes = shuffled.map((w) => ({
-      text: w.word,
-      size: fontSize(w.count),
-    }));
-
-    // Simple spiral layout
-    let angle = 0;
-    let radius = 0;
-
-    for (const node of nodes) {
-      const x = Math.cos(angle) * radius;
-      const y = Math.sin(angle) * radius;
-
-      group
-        .append('text')
-        .attr('x', x)
-        .attr('y', y)
-        .attr('text-anchor', 'middle')
-        .attr('dominant-baseline', 'central')
-        .attr('font-size', node.size)
-        .attr('fill', d3.interpolateCool(Math.random()) /* replaced with inline */)
-        .style('fill', color(fontSize.invert(node.size)))
-        .style('font-weight', '600')
-        .style('opacity', 0.85)
-        .text(node.text);
-
-      angle += 1.2;
-      radius += 5;
-    }
-  }, [words, width, height]);
+  const getOpacity = (count: number) => {
+    if (maxCount === minCount) return 1;
+    return 0.5 + ((count - minCount) / (maxCount - minCount)) * 0.5;
+  };
 
   if (words.length === 0) {
     return (
       <div className="bg-card rounded-xl p-4 border border-border">
-        <h3 className="text-sm font-medium text-muted mb-3">{label}</h3>
+        <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3">{label}</h3>
         <p className="text-muted text-sm text-center py-8">Not enough words</p>
       </div>
     );
   }
 
+  // Shuffle for a more "cloud-like" feel
+  const shuffledWords = useMemo(() => {
+    return [...sortedWords].sort(() => Math.random() - 0.5);
+  }, [sortedWords]);
+
   return (
-    <div className="bg-card rounded-xl p-4 border border-border">
-      <h3 className="text-sm font-medium text-muted mb-3">{label}</h3>
-      <div className="flex justify-center overflow-hidden">
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${width} ${height}`}
-          className="w-full max-w-full h-auto"
-          style={{ maxHeight: height }}
-        />
+    <div className="bg-card/50 rounded-xl p-4 border border-border">
+      <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-4">{label}</h3>
+      <div className="flex flex-wrap gap-x-4 gap-y-2 justify-center items-center">
+        {shuffledWords.map((w, i) => (
+          <span
+            key={`${w.word}-${i}`}
+            className="transition-all hover:scale-110 hover:text-accent cursor-default inline-block"
+            style={{
+              fontSize: getFontSize(w.count),
+              opacity: getOpacity(w.count),
+              fontWeight: w.count > maxCount * 0.5 ? '700' : '500',
+              color: w.count === maxCount ? 'var(--color-accent)' : 'inherit',
+            }}
+          >
+            {w.word}
+          </span>
+        ))}
       </div>
     </div>
   );

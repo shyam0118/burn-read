@@ -349,8 +349,6 @@ export default function AnalyzePage() {
                   <WordCloud
                     words={p.topWords}
                     label={`${p.name}'s Most Used Words`}
-                    width={400}
-                    height={200}
                   />
                 )}
 

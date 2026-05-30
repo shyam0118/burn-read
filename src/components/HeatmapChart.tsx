@@ -1,5 +1,7 @@
 'use client';
 
+import React from 'react';
+
 interface HeatmapChartProps {
   data: number[][]; // 7 days × 24 hours
   label: string;
@@ -41,9 +43,8 @@ export default function HeatmapChart({ data, label }: HeatmapChartProps) {
 
           {/* Data rows */}
           {DAY_LABELS.map((day, d) => (
-            <>
+            <React.Fragment key={day}>
               <div
-                key={`label-${day}`}
                 className="text-[10px] text-muted text-right pr-1.5 leading-5"
               >
                 {day}
@@ -58,7 +59,7 @@ export default function HeatmapChart({ data, label }: HeatmapChartProps) {
                   />
                 );
               })}
-            </>
+            </React.Fragment>
           ))}
         </div>
       </div>
