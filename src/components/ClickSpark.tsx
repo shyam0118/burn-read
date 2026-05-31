@@ -28,6 +28,18 @@ const ClickSpark: React.FC<ClickSparkProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sparksRef = useRef<Spark[]>([]);
+  const resolvedColorRef = useRef<string>('#38bdf8');
+
+  // Resolve color once and on theme changes/resize
+  const resolveColor = useCallback(() => {
+    if (sparkColor.startsWith('var')) {
+      const prop = sparkColor.replace('var(', '').replace(')', '').trim();
+      const val = getComputedStyle(document.documentElement).getPropertyValue(prop).trim();
+      if (val) resolvedColorRef.current = val;
+    } else {
+      resolvedColorRef.current = sparkColor;
+    }
+  }, [sparkColor]);
 
   const draw = useCallback(
     (timestamp: number) => {
@@ -36,6 +48,7 @@ const ClickSpark: React.FC<ClickSparkProps> = ({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
+      const dpr = window.devicePixelRatio || 1;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       sparksRef.current = sparksRef.current.filter((spark) => {
@@ -43,20 +56,17 @@ const ClickSpark: React.FC<ClickSparkProps> = ({
         const progress = Math.min(elapsed / duration, 1);
         const easedProgress = 1 - Math.pow(1 - progress, 3); // ease-out
 
-        const distance = easedProgress * sparkRadius * extraScale;
-        const lineLength = sparkSize * (1 - easedProgress);
+        const distance = easedProgress * sparkRadius * extraScale * dpr;
+        const lineLength = sparkSize * (1 - easedProgress) * dpr;
 
-        const x1 = spark.x + Math.cos(spark.angle) * distance;
-        const y1 = spark.y + Math.sin(spark.angle) * distance;
-        const x2 = spark.x + Math.cos(spark.angle) * (distance + lineLength);
-        const y2 = spark.y + Math.sin(spark.angle) * (distance + lineLength);
+        const x1 = spark.x * dpr + Math.cos(spark.angle) * distance;
+        const y1 = spark.y * dpr + Math.sin(spark.angle) * distance;
+        const x2 = spark.x * dpr + Math.cos(spark.angle) * (distance + lineLength);
+        const y2 = spark.y * dpr + Math.sin(spark.angle) * (distance + lineLength);
 
         ctx.beginPath();
-        const color = sparkColor.startsWith('var') 
-          ? getComputedStyle(document.documentElement).getPropertyValue(sparkColor.replace('var(', '').replace(')', '')).trim() || '#38bdf8' 
-          : sparkColor;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = resolvedColorRef.current;
+        ctx.lineWidth = 2 * dpr;
         ctx.lineCap = 'round';
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
@@ -65,7 +75,7 @@ const ClickSpark: React.FC<ClickSparkProps> = ({
         return progress < 1;
       });
     },
-    [sparkColor, sparkSize, sparkRadius, duration, extraScale]
+    [sparkSize, sparkRadius, duration, extraScale]
   );
 
   useEffect(() => {
@@ -82,10 +92,14 @@ const ClickSpark: React.FC<ClickSparkProps> = ({
 
   const handleResize = useCallback(() => {
     if (canvasRef.current) {
-      canvasRef.current.width = window.innerWidth;
-      canvasRef.current.height = window.innerHeight;
+      const dpr = window.devicePixelRatio || 1;
+      canvasRef.current.width = window.innerWidth * dpr;
+      canvasRef.current.height = window.innerHeight * dpr;
+      canvasRef.current.style.width = `${window.innerWidth}px`;
+      canvasRef.current.style.height = `${window.innerHeight}px`;
+      resolveColor();
     }
-  }, []);
+  }, [resolveColor]);
 
   useEffect(() => {
     handleResize();
@@ -107,11 +121,12 @@ const ClickSpark: React.FC<ClickSparkProps> = ({
       sparksRef.current.push(...newSparks);
     };
 
-    window.addEventListener('click', handleGlobalClick, true); // Use capture to catch clicks early
+    // Use both click and pointerdown for better mobile/prod support
+    window.addEventListener('pointerdown', handleGlobalClick, true);
     
     return () => {
       window.removeEventListener('resize', handleResize);
-      window.removeEventListener('click', handleGlobalClick, true);
+      window.removeEventListener('pointerdown', handleGlobalClick, true);
     };
   }, [handleResize, sparkCount]);
 
@@ -119,7 +134,6 @@ const ClickSpark: React.FC<ClickSparkProps> = ({
     <canvas
       ref={canvasRef}
       className="pointer-events-none fixed inset-0 z-[9999]"
-      style={{ width: '100vw', height: '100vh' }}
     />
   );
 };
