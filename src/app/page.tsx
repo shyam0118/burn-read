@@ -13,12 +13,13 @@ import {
   TrendingUp,
   Sparkles,
 } from 'lucide-react';
+import FAQ from '@/components/FAQ';
 
 export default function HomePage() {
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-20 space-y-24">
       {/* Hero */}
-      <section className="text-center space-y-6 mb-16">
+      <section className="text-center space-y-6">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 text-xs text-accent font-medium">
           <Sparkles className="w-3.5 h-3.5" />
           Free & Open Source
@@ -52,7 +53,7 @@ export default function HomePage() {
       </section>
 
       {/* Privacy badge */}
-      <div className="max-w-lg mx-auto mb-16 flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-sm">
+      <div className="max-w-lg mx-auto flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-sm">
         <Lock className="w-5 h-5 text-emerald-400 flex-shrink-0" />
         <p className="text-emerald-200 text-xs sm:text-sm">
           <strong>100% Private.</strong> Your chat never leaves your device.
@@ -61,7 +62,7 @@ export default function HomePage() {
       </div>
 
       {/* How it works */}
-      <section className="mb-16">
+      <section>
         <h2 className="text-2xl font-bold text-center mb-8">How It Works</h2>
         <div className="grid sm:grid-cols-3 gap-6">
           {[
@@ -94,7 +95,7 @@ export default function HomePage() {
       </section>
 
       {/* Features grid */}
-      <section className="mb-16">
+      <section>
         <h2 className="text-2xl font-bold text-center mb-8">Features</h2>
         <div className="grid sm:grid-cols-2 gap-4">
           {[
@@ -120,6 +121,9 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* FAQ */}
+      <FAQ />
 
       {/* CTA */}
       <section className="text-center bg-card rounded-2xl p-8 sm:p-12 border border-border">
