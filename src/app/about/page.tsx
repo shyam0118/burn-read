@@ -88,7 +88,7 @@ export default function AboutPage() {
           collection, and no secrets.
         </p>
         <a
-          href="https://github.com"
+          href="https://github.com/shyam0118/burn-read"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-card border border-border text-sm font-medium hover:border-muted transition-colors"

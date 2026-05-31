@@ -71,7 +71,7 @@ export default function RootLayout({
                 Privacy
               </Link>
               <a
-                href="https://github.com"
+                href="https://github.com/shyam0118/burn-read"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-3 py-1.5 rounded-lg hover:bg-card transition-colors text-muted inline-flex items-center gap-1"
@@ -101,7 +101,7 @@ export default function RootLayout({
                 About
               </Link>
               <a
-                href="https://github.com"
+                href="https://github.com/shyam0118/burn-read"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-foreground transition-colors"

@@ -41,7 +41,7 @@ export default function HomePage() {
             Analyze Your Chat
           </Link>
           <a
-            href="https://github.com"
+            href="https://github.com/shyam0118/burn-read"
             target="_blank"
             rel="noopener noreferrer"
             className="w-full sm:w-auto px-8 py-3 rounded-xl border border-border text-sm font-medium hover:bg-card transition-colors inline-flex items-center justify-center gap-2"
