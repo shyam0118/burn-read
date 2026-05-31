@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import Link from 'next/link';
 import { MessageCircle, Shield } from 'lucide-react';
 import './globals.css';
+import ClickSpark from '@/components/ClickSpark';
 
 function GitHubMark() {
   return (
@@ -45,6 +46,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        <ClickSpark />
         {/* Navbar */}
         <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm">
           <nav className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
